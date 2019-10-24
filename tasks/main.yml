@@ -1,5 +1,5 @@
 ---
-# tasks file for arangodbmaster
+# tasks file for Arangodb Node
 - name: Update Repositories
   become: yes
   apt:

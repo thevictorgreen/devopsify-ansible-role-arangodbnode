@@ -1,2 +1,6 @@
 ---
-# tasks file for arole
+# tasks file for arangodbmaster
+- name: Update Repositories
+  become: yes
+  apt:
+    update_cache: yes

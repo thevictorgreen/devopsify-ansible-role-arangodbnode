@@ -1,6 +1,161 @@
 ---
-# tasks file for Arangodb Node
-- name: Update Repositories
+# tasks file for roles/arangodbnode
+- name: Increase vm.max_map_count to 128000
+  become: yes
+  sysctl:
+    name: vm.max_map_count
+    value: 128000
+    sysctl_set: yes
+    state: present
+    reload: yes
+
+- name: Set arangodb initial root password via debconf [1/2]
+  become: yes
+  debconf:
+    name: arangodb3
+    question: arangodb3/password
+    vtype: password
+    value: g0th@m
+
+- name: Set arangodb initial root password via debconf [2/2]
+  become: yes
+  debconf:
+    name: arangodb3
+    question: arangodb3/password_again
+    vtype: password
+    value: g0th@m
+
+- name: Set arangodb database upgrade to true via debconf
+  become: yes
+  debconf:
+    name: arangodb3
+    question: arangodb3/upgrade
+    vtype: boolean
+    value: true
+
+- name: Set arangodb database backup to true via debconf
+  become: yes
+  debconf:
+    name: arangodb3
+    question: arangodb3/backup
+    vtype: boolean
+    value: true
+
+- name: Set arangodb database storage_engine to rocksdb via debconf
+  become: yes
+  debconf:
+    name: arangodb3
+    question: arangodb3/storage_engine
+    vtype: string
+    value: rocksdb
+
+- name: Install Arangodb 3.3
   become: yes
   apt:
-    update_cache: yes
+    name: arangodb3=3.3.22
+
+- name: Install Nginx
+  become: yes
+  apt:
+    name: nginx
+
+#- name: Install Arangodb 3.5 from Cyan Aptly Repository Mirror
+#  become: yes
+#  apt:
+#    name: "{{ packages }}"
+#  ignore_errors: "{{ ansible_check_mode }}"
+#  vars:
+#    packages:
+#      - arangodb3
+#      - nginx
+
+- name: Create Openssl req.conf File
+  become: yes
+  copy:
+    src: req.conf
+    dest: /etc/nginx/req.conf
+
+- name: Set hostname in req.conf config file
+  become: yes
+  shell: sed -i s/XXXXX/$(hostname)/g /etc/nginx/req.conf
+
+- name: Set ip address in req.conf config file
+  become: yes
+  shell: sed -i s/YYYYY/$(hostname -i | cut -d' ' -f1)/g /etc/nginx/req.conf
+
+- name: Create nginx default config file
+  become: yes
+  copy:
+    src: default.nginx
+    dest: /etc/nginx/sites-available/default
+
+- name: Set hostname in nginx default config file
+  become: yes
+  shell: sed -i s/XXXXX/$(hostname)/g /etc/nginx/sites-available/default
+
+- name: Set ip address in nginx default config file
+  become: yes
+  shell: sed -i s/YYYYY/$(hostname -i | cut -d' ' -f1)/g /etc/nginx/sites-available/default
+
+- name: Create ArangoDB automation directory
+  become: yes
+  file:
+    path: "{{ item }}"
+    state: directory
+  with_items:
+    - '/root/.adb_automate'
+
+- name: Upload new arangod.conf
+  become: yes
+  copy:
+    src: arangod.conf
+    dest: /etc/arangodb3/arangod.conf
+
+- name: Set ip address in arangod.conf
+  become: yes
+  shell: sed -i s/YYYYY/$(hostname -i | cut -d' ' -f1)/g /etc/arangodb3/arangod.conf
+
+- name: Upload arangodb jwt file
+  become: yes
+  copy:
+    src: adb3_jwt
+    dest: /root/.adb_automate/adb3_jwt
+
+- name: Change permissions on adb3_jwt
+  become: yes
+  file:
+    path: /root/.adb_automate/adb3_jwt
+    mode: "o-rwx"
+  ignore_errors: "{{ ansible_check_mode }}"
+
+- name: Upload arangodb replication.js
+  become: yes
+  copy:
+    src: replication.js
+    dest: /root/.adb_automate/replication.js
+
+- name: Change permissions on replication.js
+  become: yes
+  file:
+    path: /root/.adb_automate/replication.js
+    mode: "u+rwx"
+  ignore_errors: "{{ ansible_check_mode }}"
+
+- name: Upload arangodb nginx proxy initialization script
+  become: yes
+  copy:
+    src: adb3_init.sh
+    dest: /root/.adb_automate/adb3_init.sh
+
+- name: Change permissions on adb3_init.sh
+  become: yes
+  file:
+    path: /root/.adb_automate/adb3_init.sh
+    mode: "u+rwx"
+  ignore_errors: "{{ ansible_check_mode }}"
+
+- name: Run Arangodb Initialization script
+  become: yes
+  command: /root/.adb_automate/adb3_init.sh
+  args:
+    executable: /bin/bash
